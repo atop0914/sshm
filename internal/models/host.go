@@ -2,12 +2,13 @@ package models
 
 // Host represents an SSH host entry
 type Host struct {
-	Name     string `json:"name" yaml:"name"`
-	Host     string `json:"host" yaml:"host"`
-	Port     int    `json:"port" yaml:"port"`
-	User     string `json:"user" yaml:"user"`
-	Identity string `json:"identity,omitempty" yaml:"identity,omitempty"`
-	Proxy    string `json:"proxy,omitempty" yaml:"proxy,omitempty"`
+	ID       string   `json:"id" yaml:"id"`
+	Name     string   `json:"name" yaml:"name"`
+	Host     string   `json:"host" yaml:"host"`
+	Port     int      `json:"port" yaml:"port"`
+	User     string   `json:"user" yaml:"user"`
+	Identity string   `json:"identity,omitempty" yaml:"identity,omitempty"`
+	Proxy    string   `json:"proxy,omitempty" yaml:"proxy,omitempty"`
 	Tags     []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 
