@@ -1,7 +1,11 @@
 # Binaries
 sshm
-sshm-bin
+sshm-*
+sshm-test
 *.exe
+*.dmg
+*.linux_amd64
+*.darwin_arm64
 
 # Go
 vendor/
