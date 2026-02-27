@@ -11,6 +11,7 @@ import (
 // App represents the main TUI application
 type App struct {
 	store     *store.Store
+	listView  *ListView
 	view      string // "list", "add", "edit", "detail"
 	quitting  bool
 	err       error
@@ -21,8 +22,9 @@ func New(storePath string) (*App, error) {
 	s := store.NewStore(storePath)
 
 	return &App{
-		store: s,
-		view:  "list",
+		store:    s,
+		listView: NewListView(s),
+		view:     "list",
 	}, nil
 }
 
@@ -50,7 +52,7 @@ func (m *App) View() string {
 
 	switch m.view {
 	case "list":
-		return m.renderList()
+		return m.listView.View()
 	case "add":
 		return m.renderAdd()
 	case "edit":
@@ -58,7 +60,7 @@ func (m *App) View() string {
 	case "detail":
 		return m.renderDetail()
 	default:
-		return m.renderList()
+		return m.listView.View()
 	}
 }
 
