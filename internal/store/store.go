@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -10,39 +11,50 @@ import (
 	"github.com/sshm/sshm/internal/models"
 )
 
-// Store manages host data persistence
-type Store struct {
-	path   string
-	hosts  map[string]models.Host
+// ErrHostNotFound is returned when a host is not found
+var ErrHostNotFound = errors.New("host not found")
+
+// ErrHostExists is returned when adding a host that already exists
+var ErrHostExists = errors.New("host already exists")
+
+// StoreInterface defines the interface for host storage
+type StoreInterface interface {
+	AddHost(host models.Host) error
+	UpdateHost(host models.Host) error
+	DeleteHost(id string) error
+	GetHost(id string) (models.Host, error)
+	ListHosts() []models.Host
+	SearchHosts(query string) []models.Host
 }
 
-// NewStore creates a new Store instance
-func NewStore(path string) *Store {
-	s := &Store{
+// FileStore manages host data persistence in a file
+type FileStore struct {
+	path  string
+	hosts map[string]models.Host
+}
+
+// NewFileStore creates a new FileStore instance
+func NewFileStore(path string) *FileStore {
+	s := &FileStore{
 		path:  path,
 		hosts: make(map[string]models.Host),
 	}
-	// Load existing data if file exists
 	s.load()
 	return s
 }
 
 // load reads data from the storage file
-func (s *Store) load() error {
+func (s *FileStore) load() error {
 	data, err := os.ReadFile(s.path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // No file yet, that's ok
+			return nil
 		}
 		return fmt.Errorf("failed to read store: %w", err)
 	}
 
 	var hosts []models.Host
-	// Try JSON first
 	if err := json.Unmarshal(data, &hosts); err != nil {
-		// Try YAML
-		// Note: For YAML support, would need gopkg.in/yaml.v3
-		// For now, we support JSON
 		return fmt.Errorf("failed to parse store data: %w", err)
 	}
 
@@ -55,7 +67,7 @@ func (s *Store) load() error {
 }
 
 // save writes data to the storage file
-func (s *Store) save() error {
+func (s *FileStore) save() error {
 	hosts := s.ListHosts()
 	data, err := json.MarshalIndent(hosts, "", "  ")
 	if err != nil {
@@ -70,13 +82,13 @@ func (s *Store) save() error {
 }
 
 // AddHost adds a new host to the store
-func (s *Store) AddHost(host models.Host) error {
+func (s *FileStore) AddHost(host models.Host) error {
 	if host.ID == "" {
 		host.ID = uuid.New().String()
 	}
 
 	if _, exists := s.hosts[host.ID]; exists {
-		return fmt.Errorf("host with ID %s already exists", host.ID)
+		return ErrHostExists
 	}
 
 	s.hosts[host.ID] = host
@@ -84,13 +96,13 @@ func (s *Store) AddHost(host models.Host) error {
 }
 
 // UpdateHost updates an existing host
-func (s *Store) UpdateHost(host models.Host) error {
+func (s *FileStore) UpdateHost(host models.Host) error {
 	if host.ID == "" {
 		return fmt.Errorf("host ID is required for update")
 	}
 
 	if _, exists := s.hosts[host.ID]; !exists {
-		return fmt.Errorf("host with ID %s not found", host.ID)
+		return ErrHostNotFound
 	}
 
 	s.hosts[host.ID] = host
@@ -98,9 +110,9 @@ func (s *Store) UpdateHost(host models.Host) error {
 }
 
 // DeleteHost removes a host by ID
-func (s *Store) DeleteHost(id string) error {
+func (s *FileStore) DeleteHost(id string) error {
 	if _, exists := s.hosts[id]; !exists {
-		return fmt.Errorf("host with ID %s not found", id)
+		return ErrHostNotFound
 	}
 
 	delete(s.hosts, id)
@@ -108,7 +120,7 @@ func (s *Store) DeleteHost(id string) error {
 }
 
 // ListHosts returns all hosts
-func (s *Store) ListHosts() []models.Host {
+func (s *FileStore) ListHosts() []models.Host {
 	hosts := make([]models.Host, 0, len(s.hosts))
 	for _, host := range s.hosts {
 		hosts = append(hosts, host)
@@ -117,15 +129,15 @@ func (s *Store) ListHosts() []models.Host {
 }
 
 // SearchHosts searches hosts by query string
-func (s *Store) SearchHosts(query string) []models.Host {
-	query = strings.ToLower(query)
+func (s *FileStore) SearchHosts(query string) []models.Host {
+	query = lower(query)
 	var results []models.Host
 
 	for _, host := range s.hosts {
-		if strings.Contains(strings.ToLower(host.Name), query) ||
-			strings.Contains(strings.ToLower(host.Host), query) ||
-			strings.Contains(strings.ToLower(host.User), query) ||
-			strings.Contains(strings.ToLower(host.Proxy), query) ||
+		if contains(lower(host.Name), query) ||
+			contains(lower(host.Host), query) ||
+			contains(lower(host.User), query) ||
+			contains(lower(host.Proxy), query) ||
 			containsAny(host.Tags, query) {
 			results = append(results, host)
 		}
@@ -134,21 +146,48 @@ func (s *Store) SearchHosts(query string) []models.Host {
 	return results
 }
 
-// containsAny checks if any tag contains the query
+// GetHost returns a host by ID
+func (s *FileStore) GetHost(id string) (models.Host, error) {
+	host, exists := s.hosts[id]
+	if !exists {
+		return models.Host{}, ErrHostNotFound
+	}
+	return host, nil
+}
+
+// FilterByTag returns hosts that have the specified tag
+func (s *FileStore) FilterByTag(tag string) []models.Host {
+	tag = lower(tag)
+	var results []models.Host
+
+	for _, host := range s.hosts {
+		if containsAny(host.Tags, tag) {
+			results = append(results, host)
+		}
+	}
+
+	return results
+}
+
+// Count returns the number of hosts in the store
+func (s *FileStore) Count() int {
+	return len(s.hosts)
+}
+
+// helper functions
+func lower(s string) string {
+	return strings.ToLower(s)
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
 func containsAny(tags []string, query string) bool {
 	for _, tag := range tags {
-		if strings.Contains(strings.ToLower(tag), query) {
+		if contains(lower(tag), query) {
 			return true
 		}
 	}
 	return false
-}
-
-// GetHost returns a host by ID
-func (s *Store) GetHost(id string) (models.Host, error) {
-	host, exists := s.hosts[id]
-	if !exists {
-		return models.Host{}, fmt.Errorf("host with ID %s not found", id)
-	}
-	return host, nil
 }

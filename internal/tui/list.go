@@ -18,7 +18,7 @@ const (
 
 // ListView displays the host list
 type ListView struct {
-	store    *store.Store
+	store    *store.FileStore
 	hosts    []models.Host
 	selected int
 	filter   string
@@ -26,7 +26,7 @@ type ListView struct {
 }
 
 // NewListView creates a new list view
-func NewListView(s *store.Store) *ListView {
+func NewListView(s *store.FileStore) *ListView {
 	return &ListView{
 		store:    s,
 		hosts:    s.ListHosts(),

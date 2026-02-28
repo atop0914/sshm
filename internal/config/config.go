@@ -5,30 +5,18 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/sshm/sshm/internal/models"
 )
 
+// Config holds the entire application configuration
+// Uses models.Host and models.SSHConfig for type consistency
 type Config struct {
-	Hosts  []Host  `json:"hosts"`
-	Config []SSHConfig `json:"configs"`
+	Hosts   []models.Host     `json:"hosts" yaml:"hosts"`
+	Configs []models.SSHConfig `json:"configs" yaml:"configs"`
 }
 
-type Host struct {
-	Name     string `json:"name"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	User     string `json:"user"`
-	Identity string `json:"identity,omitempty"`
-	Proxy    string `json:"proxy,omitempty"`
-}
-
-type SSHConfig struct {
-	Name           string `json:"name"`
-	IdentityFile   string `json:"identity_file,omitempty"`
-	ProxyCommand   string `json:"proxy_command,omitempty"`
-	ForwardAgent   bool   `json:"forward_agent,omitempty"`
-	ServerAliveInterval int `json:"server_alive_interval,omitempty"`
-}
-
+// GetDefaultConfigPath returns the default configuration file path
 func GetDefaultConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -37,6 +25,8 @@ func GetDefaultConfigPath() string {
 	return filepath.Join(home, ".sshm.json")
 }
 
+// LoadConfig loads configuration from the specified path
+// If path is empty, uses default path
 func LoadConfig(path string) (*Config, error) {
 	if path == "" {
 		path = GetDefaultConfigPath()
@@ -51,13 +41,18 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse config: %w", err)
+	// Try JSON first
+	if err := json.Unmarshal(data, &cfg); err == nil {
+		return &cfg, nil
 	}
 
-	return &cfg, nil
+	// Fallback to YAML (requires gopkg.in/yaml.v3)
+	// For now, return error if JSON fails
+	return nil, fmt.Errorf("failed to parse config: %w", err)
 }
 
+// SaveConfig saves configuration to the specified path
+// If path is empty, uses default path
 func SaveConfig(cfg *Config, path string) error {
 	if path == "" {
 		path = GetDefaultConfigPath()
@@ -73,4 +68,18 @@ func SaveConfig(cfg *Config, path string) error {
 	}
 
 	return nil
+}
+
+// EnsureDir ensures the directory for the config file exists
+func EnsureConfigDir(path string) error {
+	if path == "" {
+		path = GetDefaultConfigPath()
+	}
+
+	dir := filepath.Dir(path)
+	if dir == "." {
+		return nil
+	}
+
+	return os.MkdirAll(dir, 0700)
 }

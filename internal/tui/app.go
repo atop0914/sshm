@@ -10,7 +10,7 @@ import (
 
 // App represents the main TUI application
 type App struct {
-	store     *store.Store
+	store     *store.FileStore
 	listView  *ListView
 	view      string // "list", "add", "edit", "detail"
 	quitting  bool
@@ -19,7 +19,7 @@ type App struct {
 
 // New creates a new TUI application
 func New(storePath string) (*App, error) {
-	s := store.NewStore(storePath)
+	s := store.NewFileStore(storePath)
 
 	return &App{
 		store:    s,

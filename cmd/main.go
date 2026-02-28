@@ -19,7 +19,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Loaded %d hosts, %d configs\n", len(cfg.Hosts), len(cfg.Config))
+	fmt.Printf("Loaded %d hosts, %d configs\n", len(cfg.Hosts), len(cfg.Configs))
 	fmt.Printf("Default config path: %s\n", config.GetDefaultConfigPath())
 
 	// If no TTY, just print info and exit

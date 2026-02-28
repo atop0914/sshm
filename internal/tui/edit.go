@@ -21,7 +21,7 @@ const (
 
 // EditView handles add/edit host form
 type EditView struct {
-	store    *store.Store
+	store    *store.FileStore
 	host     *models.Host
 	mode     string // "add" or "edit"
 	field    string
@@ -32,7 +32,7 @@ type EditView struct {
 }
 
 // NewEditView creates a new edit view for adding a host
-func NewAddView(s *store.Store) *EditView {
+func NewAddView(s *store.FileStore) *EditView {
 	return &EditView{
 		store:  s,
 		host:   &models.Host{},
@@ -45,7 +45,7 @@ func NewAddView(s *store.Store) *EditView {
 }
 
 // NewEditView creates a new edit view for editing a host
-func NewEditView(s *store.Store, hostID string) (*EditView, error) {
+func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 	host, err := s.GetHost(hostID)
 	if err != nil {
 		return nil, err
