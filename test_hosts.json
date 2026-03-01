@@ -1,0 +1,45 @@
+{
+  "hosts": [
+    {
+      "id": "1",
+      "name": "production-web",
+      "host": "192.168.1.100",
+      "port": 22,
+      "user": "admin",
+      "identity": "~/.ssh/id_rsa",
+      "tags": ["production", "web"]
+    },
+    {
+      "id": "2",
+      "name": "production-db",
+      "host": "192.168.1.101",
+      "port": 22,
+      "user": "dbadmin",
+      "tags": ["production", "database"]
+    },
+    {
+      "id": "3",
+      "name": "staging-server",
+      "host": "192.168.2.50",
+      "port": 22,
+      "user": "deploy",
+      "tags": ["staging"]
+    },
+    {
+      "id": "4",
+      "name": "dev-local",
+      "host": "localhost",
+      "port": 22,
+      "user": "developer",
+      "tags": ["development", "local"]
+    },
+    {
+      "id": "5",
+      "name": "backup-server",
+      "host": "192.168.1.200",
+      "port": 22,
+      "user": "backup",
+      "tags": ["backup", "storage"]
+    }
+  ]
+}

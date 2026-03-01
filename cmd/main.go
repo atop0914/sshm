@@ -42,5 +42,5 @@ func isTerminal() bool {
 
 // Placeholder for terminal detection
 func isInteractive() bool {
-	return false
+	return true // Always try to run TUI for testing
 }
