@@ -9,6 +9,7 @@ type Host struct {
 	User     string   `json:"user" yaml:"user"`
 	Identity string   `json:"identity,omitempty" yaml:"identity,omitempty"`
 	Proxy    string   `json:"proxy,omitempty" yaml:"proxy,omitempty"`
+	Group    string   `json:"group,omitempty" yaml:"group,omitempty"`
 	Tags     []string `json:"tags,omitempty" yaml:"tags,omitempty"`
 }
 

@@ -147,6 +147,7 @@ func (v *ListView) updateFiltered() {
 			if strings.Contains(strings.ToLower(h.Name), lowerFilter) ||
 				strings.Contains(strings.ToLower(h.Host), lowerFilter) ||
 				strings.Contains(strings.ToLower(h.User), lowerFilter) ||
+				strings.Contains(strings.ToLower(h.Group), lowerFilter) ||
 				stringsContainsAny(h.Tags, lowerFilter) {
 				v.filtered = append(v.filtered, h)
 			}
@@ -295,8 +296,14 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 	// Host info
 	hostInfo := fmt.Sprintf("%s@%s:%d", h.User, h.Host, h.Port)
 
+	// Group info
+	groupInfo := ""
+	if h.Group != "" {
+		groupInfo = "[" + h.Group + "]"
+	}
+
 	// Calculate available width for name
-	availableWidth := width - len(cursor) - len(hostInfo) - 4
+	availableWidth := width - len(cursor) - len(hostInfo) - len(groupInfo) - 4
 	if availableWidth < 10 {
 		availableWidth = 10
 	}
@@ -313,10 +320,10 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 	// Build the row
 	var row string
 	if selected {
-		row = fmt.Sprintf(" %s %-*s %s %s", cursor, availableWidth, name, hostInfo, tagsStr)
+		row = fmt.Sprintf(" %s %-*s %s %s %s", cursor, availableWidth, name, groupInfo, hostInfo, tagsStr)
 		row = SelectedStyle.Width(width).Render(row)
 	} else {
-		row = fmt.Sprintf(" %s %-*s %s %s", cursor, availableWidth, name, hostInfo, tagsStr)
+		row = fmt.Sprintf(" %s %-*s %s %s %s", cursor, availableWidth, name, groupInfo, hostInfo, tagsStr)
 		row = NormalStyle.Width(width).Render(row)
 	}
 

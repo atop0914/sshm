@@ -138,6 +138,7 @@ func (s *FileStore) SearchHosts(query string) []models.Host {
 			contains(lower(host.Host), query) ||
 			contains(lower(host.User), query) ||
 			contains(lower(host.Proxy), query) ||
+			contains(lower(host.Group), query) ||
 			containsAny(host.Tags, query) {
 			results = append(results, host)
 		}
@@ -162,6 +163,20 @@ func (s *FileStore) FilterByTag(tag string) []models.Host {
 
 	for _, host := range s.hosts {
 		if containsAny(host.Tags, tag) {
+			results = append(results, host)
+		}
+	}
+
+	return results
+}
+
+// FilterByGroup returns hosts that belong to the specified group
+func (s *FileStore) FilterByGroup(group string) []models.Host {
+	group = lower(group)
+	var results []models.Host
+
+	for _, host := range s.hosts {
+		if host.Group != "" && contains(lower(host.Group), group) {
 			results = append(results, host)
 		}
 	}

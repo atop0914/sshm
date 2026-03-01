@@ -17,6 +17,7 @@ const (
 	fieldUser     = "user"
 	fieldIdentity = "identity"
 	fieldProxy    = "proxy"
+	fieldGroup    = "group"
 )
 
 // EditView handles add/edit host form
@@ -62,6 +63,7 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 			fieldUser:     host.User,
 			fieldIdentity: host.Identity,
 			fieldProxy:    host.Proxy,
+			fieldGroup:    host.Group,
 		},
 		errors: make(map[string]string),
 		saved:  false,
@@ -104,7 +106,7 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (v *EditView) fields() []string {
-	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldIdentity, fieldProxy}
+	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldIdentity, fieldProxy, fieldGroup}
 }
 
 func (v *EditView) prevField() {
@@ -169,6 +171,7 @@ func (v *EditView) save() tea.Cmd {
 		User:     v.values[fieldUser],
 		Identity: v.values[fieldIdentity],
 		Proxy:    v.values[fieldProxy],
+		Group:    v.values[fieldGroup],
 	}
 
 	if v.mode == "add" {
@@ -208,6 +211,9 @@ func (v *EditView) View() string {
 		}
 		if f == fieldProxy {
 			label = "Proxy Jump"
+		}
+		if f == fieldGroup {
+			label = "Group"
 		}
 
 		row := fmt.Sprintf("  %s: %s", label, value)
