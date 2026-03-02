@@ -12,6 +12,7 @@ import (
 type App struct {
 	store     *store.FileStore
 	listView  *ListView
+	editView  *EditView
 	view      string // "list", "add", "edit", "detail"
 	quitting  bool
 	err       error
@@ -54,8 +55,14 @@ func (m *App) View() string {
 	case "list":
 		return m.listView.View()
 	case "add":
+		if m.editView != nil {
+			return m.editView.View()
+		}
 		return m.renderAdd()
 	case "edit":
+		if m.editView != nil {
+			return m.editView.View()
+		}
 		return m.renderEdit()
 	case "detail":
 		return m.renderDetail()
@@ -65,20 +72,54 @@ func (m *App) View() string {
 }
 
 func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Delegate to edit view if active
+	if m.view == "add" || m.view == "edit" {
+		if m.editView != nil {
+			model, cmd := m.editView.Update(msg)
+			m.editView = model.(*EditView)
+			
+			// Check if edit view signaled quit (save completed or cancel)
+			if m.editView.saved || msg.String() == "esc" {
+				m.view = "list"
+				m.editView = nil
+				m.listView.Refresh()
+			}
+			return m, cmd
+		}
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
 	case "a":
+		// Start add mode
+		m.editView = NewAddView(m.store)
 		m.view = "add"
 	case "e":
-		m.view = "edit"
+		// Start edit mode with selected host
+		selectedHost := m.listView.GetSelectedHost()
+		if selectedHost != nil {
+			editView, err := NewEditView(m.store, selectedHost.ID)
+			if err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.editView = editView
+			m.view = "edit"
+		}
 	case "d":
 		m.view = "detail"
 	case "esc":
 		m.view = "list"
+		m.editView = nil
 	default:
-		// Handle navigation keys
+		// Handle navigation keys in list view
+		if m.view == "list" {
+			model, cmd := m.listView.Update(msg)
+			m.listView = model.(*ListView)
+			return m, cmd
+		}
 	}
 	return m, nil
 }
@@ -106,6 +147,10 @@ func (m *App) renderList() string {
 }
 
 func (m *App) renderAdd() string {
+	if m.editView != nil {
+		return m.editView.View()
+	}
+	
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Add New Host"),
 	)
@@ -118,6 +163,10 @@ func (m *App) renderAdd() string {
 }
 
 func (m *App) renderEdit() string {
+	if m.editView != nil {
+		return m.editView.View()
+	}
+	
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Edit Host"),
 	)
@@ -130,11 +179,28 @@ func (m *App) renderEdit() string {
 }
 
 func (m *App) renderDetail() string {
+	selectedHost := m.listView.GetSelectedHost()
+	
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Host Details"),
 	)
 
-	body := BodyStyle.Render("Host details view (coming soon)")
+	var body string
+	if selectedHost == nil {
+		body = BodyStyle.Render("No host selected")
+	} else {
+		body = BodyStyle.Render(
+			fmt.Sprintf("Name: %s\nHost: %s\nPort: %d\nUser: %s\nIdentity: %s\nProxy: %s\nGroup: %s",
+				selectedHost.Name,
+				selectedHost.Host,
+				selectedHost.Port,
+				selectedHost.User,
+				selectedHost.Identity,
+				selectedHost.Proxy,
+				selectedHost.Group,
+			),
+		)
+	}
 
 	footer := StatusBar("esc: Back")
 
