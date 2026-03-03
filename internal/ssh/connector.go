@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
 	"github.com/sshm/sshm/internal/models"
 	"golang.org/x/crypto/ssh"
@@ -72,8 +74,8 @@ func (c *Connector) ConnectWithAuth(host models.Host, auth AuthMethod) error {
 
 // buildClientConfig builds SSH client configuration
 func (c *Connector) buildClientConfig(host models.Host) (*ssh.ClientConfig, error) {
-	// Try SSH agent first, then key file, then default keys
-	methods := []AuthMethod{AuthMethodSSHAgent, AuthMethodKeyFile}
+	// Try password first if available, then SSH agent, then key file
+	methods := []AuthMethod{AuthMethodPassword, AuthMethodSSHAgent, AuthMethodKeyFile}
 
 	for _, method := range methods {
 		config, err := c.buildClientConfigWithAuth(host, method)
@@ -95,8 +97,9 @@ func (c *Connector) buildClientConfigWithAuth(host models.Host, auth AuthMethod)
 
 	switch auth {
 	case AuthMethodPassword:
-		// Password auth not implemented - would need to prompt user
-		return config, fmt.Errorf("password authentication not implemented")
+		if err := c.addPasswordAuth(config, host.Password); err != nil {
+			return nil, err
+		}
 
 	case AuthMethodSSHAgent:
 		if err := c.addSSHAgentAuth(config); err != nil {
@@ -142,6 +145,15 @@ func (c *Connector) addSSHAgentAuth(config *ssh.ClientConfig) error {
 	}
 
 	config.Auth = append(config.Auth, ssh.PublicKeys(signers...))
+	return nil
+}
+
+// addPasswordAuth adds password authentication
+func (c *Connector) addPasswordAuth(config *ssh.ClientConfig, password string) error {
+	if password == "" {
+		return fmt.Errorf("password is empty")
+	}
+	config.Auth = append(config.Auth, ssh.Password(password))
 	return nil
 }
 
@@ -211,6 +223,43 @@ func expandPath(path string) (string, error) {
 		return filepath.Join(usr.HomeDir, path[2:]), nil
 	}
 	return path, nil
+}
+
+// LaunchSSH launches an external SSH process using the system ssh command
+func LaunchSSH(host models.Host) error {
+	// Build ssh command arguments
+	args := []string{}
+	
+	// Add port if non-default
+	if host.Port != 22 {
+		args = append(args, "-p", fmt.Sprintf("%d", host.Port))
+	}
+	
+	// Add identity file if specified
+	if host.Identity != "" {
+		expandedPath, err := expandPath(host.Identity)
+		if err == nil {
+			args = append(args, "-i", expandedPath)
+		}
+	}
+	
+	// Add user@host
+	args = append(args, fmt.Sprintf("%s@%s", host.User, host.Host))
+	
+	// Execute the ssh command - use exec.LookPath to find ssh
+	sshPath, err := exec.LookPath("ssh")
+	if err != nil {
+		return fmt.Errorf("ssh command not found: %w", err)
+	}
+	
+	// Use syscall.Exec to replace the current process
+	// This gives control of the terminal to SSH
+	err = syscall.Exec(sshPath, append([]string{"ssh"}, args...), os.Environ())
+	if err != nil {
+		return fmt.Errorf("failed to execute ssh: %w", err)
+	}
+	
+	return nil
 }
 
 // IsConnected returns whether the connector has an active connection

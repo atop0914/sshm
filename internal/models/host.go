@@ -7,6 +7,7 @@ type Host struct {
 	Host     string   `json:"host" yaml:"host"`
 	Port     int      `json:"port" yaml:"port"`
 	User     string   `json:"user" yaml:"user"`
+	Password string   `json:"password,omitempty" yaml:"password,omitempty"`
 	Identity string   `json:"identity,omitempty" yaml:"identity,omitempty"`
 	Proxy    string   `json:"proxy,omitempty" yaml:"proxy,omitempty"`
 	Group    string   `json:"group,omitempty" yaml:"group,omitempty"`

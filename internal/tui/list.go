@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/sshm/sshm/internal/models"
+	"github.com/sshm/sshm/internal/ssh"
 	"github.com/sshm/sshm/internal/store"
 )
 
@@ -121,9 +122,16 @@ func (v *ListView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.filtering = true
 		v.filterText = ""
 	case "enter":
-		// TODO: Connect to selected host
+		// Connect to selected host
 		if len(v.filtered) > 0 && v.cursor < len(v.filtered) {
-			fmt.Printf("Selected host: %s\n", v.filtered[v.cursor].Name)
+			host := v.filtered[v.cursor]
+			fmt.Printf("Connecting to %s...\n", host.Name)
+			// Exit the TUI and launch SSH
+			if err := ssh.LaunchSSH(host); err != nil {
+				fmt.Printf("Failed to connect: %v\n", err)
+			}
+			// Return quit to exit the TUI and return control
+			return v, tea.Quit
 		}
 	case "a":
 		// Handled by parent App
