@@ -396,7 +396,11 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 
 	status := statusLeft + statusRight
 
-	return HelpStyle.Width(width).Render(status)
+	helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | q: Quit"
+	
+	help := HelpStyle.Width(width).Render(helpText)
+
+	return help + "\n" + StatusBar(status)
 }
 
 // Refresh reloads hosts from store

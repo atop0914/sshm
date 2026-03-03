@@ -10,22 +10,26 @@ import (
 
 // App represents the main TUI application
 type App struct {
-	store     *store.FileStore
-	listView  *ListView
-	editView  *EditView
-	view      string // "list", "add", "edit", "detail"
-	quitting  bool
-	err       error
+	store      *store.FileStore
+	history    *store.HistoryStore
+	listView   *ListView
+	editView   *EditView
+	historyView *HistoryView
+	view       string // "list", "add", "edit", "detail", "history"
+	quitting   bool
+	err        error
 }
 
 // New creates a new TUI application
 func New(storePath string) (*App, error) {
 	s := store.NewFileStore(storePath)
+	h := store.NewHistoryStore("")
 
 	return &App{
-		store:    s,
-		listView: NewListView(s),
-		view:     "list",
+		store:       s,
+		history:     h,
+		listView:    NewListView(s),
+		view:        "list",
 	}, nil
 }
 
@@ -66,6 +70,11 @@ func (m *App) View() string {
 		return m.renderEdit()
 	case "detail":
 		return m.renderDetail()
+	case "history":
+		if m.historyView != nil {
+			return m.historyView.View()
+		}
+		return m.renderHistory()
 	default:
 		return m.listView.View()
 	}
@@ -110,14 +119,32 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "d":
 		m.view = "detail"
+	case "h":
+		// Show history view
+		m.historyView = NewHistoryView(m.store, m.history, "")
+		m.view = "history"
+	case "H":
+		// Show history for selected host
+		selectedHost := m.listView.GetSelectedHost()
+		if selectedHost != nil {
+			m.historyView = NewHistoryView(m.store, m.history, selectedHost.ID)
+			m.view = "history"
+		}
 	case "esc":
 		m.view = "list"
 		m.editView = nil
+		m.historyView = nil
 	default:
 		// Handle navigation keys in list view
 		if m.view == "list" {
 			model, cmd := m.listView.Update(msg)
 			m.listView = model.(*ListView)
+			return m, cmd
+		}
+		// Handle navigation in history view
+		if m.view == "history" && m.historyView != nil {
+			model, cmd := m.historyView.Update(msg)
+			m.historyView = model.(*HistoryView)
 			return m, cmd
 		}
 	}
@@ -189,8 +216,9 @@ func (m *App) renderDetail() string {
 	if selectedHost == nil {
 		body = BodyStyle.Render("No host selected")
 	} else {
+		stats := GetHistoryStatsForHost(m.store, m.history, selectedHost.ID)
 		body = BodyStyle.Render(
-			fmt.Sprintf("Name: %s\nHost: %s\nPort: %d\nUser: %s\nIdentity: %s\nProxy: %s\nGroup: %s",
+			fmt.Sprintf("Name: %s\nHost: %s\nPort: %d\nUser: %s\nIdentity: %s\nProxy: %s\nGroup: %s\n\nConnection Stats:\n  Total: %d\n  Successful: %d\n  Failed: %d\n  Last: %s",
 				selectedHost.Name,
 				selectedHost.Host,
 				selectedHost.Port,
@@ -198,11 +226,31 @@ func (m *App) renderDetail() string {
 				selectedHost.Identity,
 				selectedHost.Proxy,
 				selectedHost.Group,
+				stats.TotalConnections,
+				stats.SuccessfulConns,
+				stats.FailedConns,
+				stats.LastConnected.Format("2006-01-02 15:04"),
 			),
 		)
 	}
 
 	footer := StatusBar("esc: Back")
+
+	return header + "\n\n" + body + "\n\n" + footer
+}
+
+func (m *App) renderHistory() string {
+	if m.historyView != nil {
+		return m.historyView.View()
+	}
+	
+	header := BorderStyle.Width(60).Render(
+		HeaderStyle.Render("Connection History"),
+	)
+
+	body := BodyStyle.Render("Loading history...")
+
+	footer := StatusBar("↑↓ Navigate | r: Refresh | c: Clear | esc: Back")
 
 	return header + "\n\n" + body + "\n\n" + footer
 }
