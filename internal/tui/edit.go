@@ -14,15 +14,16 @@ import (
 )
 
 const (
-	fieldName     = "name"
-	fieldHost     = "host"
-	fieldPort     = "port"
-	fieldUser     = "user"
-	fieldAuthType = "auth_type"
-	fieldIdentity = "identity"
-	fieldProxy    = "proxy"
-	fieldGroup    = "group"
-	fieldTags     = "tags"
+	fieldName      = "name"
+	fieldHost      = "host"
+	fieldPort      = "port"
+	fieldUser      = "user"
+	fieldAuthType  = "auth_type"
+	fieldIdentity  = "identity"
+	fieldPassword  = "password"
+	fieldProxy     = "proxy"
+	fieldGroup     = "group"
+	fieldTags      = "tags"
 )
 
 // AuthType represents authentication method
@@ -41,6 +42,7 @@ type EditView struct {
 	mode         string // "add" or "edit"
 	field        string
 	values       map[string]string
+	securePassword string // password stored separately (not displayed)
 	cursor       int
 	errors       map[string]string
 	saved        bool
@@ -48,6 +50,8 @@ type EditView struct {
 	showBrowser  bool
 	existingTags []string
 	existingGroups []string
+	enterPassword bool // flag to indicate we're entering password
+	passwordMasked string // placeholder display for password
 }
 
 // FileBrowser handles SSH key file selection
@@ -188,9 +192,16 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 	groups := collectGroups(hosts)
 	tags := collectTags(hosts)
 	
-	authType := AuthKey
-	if host.Identity == "" {
-		authType = AuthAgent
+	// Determine auth type from host
+	authType := string(host.AuthType)
+	if authType == "" {
+		if host.Identity != "" {
+			authType = string(AuthKey)
+		} else if host.Password != "" {
+			authType = string(AuthPassword)
+		} else {
+			authType = string(AuthAgent)
+		}
 	}
 	
 	return &EditView{
@@ -203,12 +214,14 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 			fieldHost:     host.Host,
 			fieldPort:     strconv.Itoa(host.Port),
 			fieldUser:     host.User,
-			fieldAuthType: string(authType),
+			fieldAuthType: authType,
 			fieldIdentity: host.Identity,
 			fieldProxy:    host.Proxy,
 			fieldGroup:    host.Group,
 			fieldTags:     joinTags(host.Tags),
 		},
+		securePassword: host.Password,
+		passwordMasked: "••••••••",
 		errors:         make(map[string]string),
 		saved:          false,
 		existingGroups: groups,
@@ -277,6 +290,11 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v.handleBrowserKey(msg)
 	}
 	
+	// Handle password entry mode
+	if v.enterPassword {
+		return v.handlePasswordKey(msg)
+	}
+	
 	switch msg.String() {
 	case "up", "k":
 		v.prevField()
@@ -295,6 +313,11 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			} else {
 				v.fileBrowser = NewFileBrowser(homeDir)
 			}
+		} else if v.field == fieldPassword {
+			// Enter password entry mode
+			v.enterPassword = true
+			v.securePassword = ""
+			v.passwordMasked = ""
 		}
 	case "right", "l":
 		if v.field == fieldAuthType {
@@ -354,8 +377,40 @@ func (v *EditView) handleBrowserKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return v, nil
 }
 
+// handlePasswordKey handles secure password entry
+func (v *EditView) handlePasswordKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "enter":
+		// Confirm password
+		v.enterPassword = false
+		// Set masked display
+		if v.securePassword != "" {
+			v.passwordMasked = "••••••••"
+		}
+		v.validate()
+	case "esc":
+		// Cancel password entry - restore previous value
+		v.enterPassword = false
+		if v.securePassword != "" {
+			v.passwordMasked = "••••••••"
+		}
+	case "backspace":
+		if len(v.securePassword) > 0 {
+			v.securePassword = v.securePassword[:len(v.securePassword)-1]
+			v.passwordMasked = v.passwordMasked[:len(v.passwordMasked)-1]
+		}
+	default:
+		// Add character to password
+		if len(msg.String()) == 1 {
+			v.securePassword += msg.String()
+			v.passwordMasked += "•"
+		}
+	}
+	return v, nil
+}
+
 func (v *EditView) fields() []string {
-	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldAuthType, fieldIdentity, fieldProxy, fieldGroup, fieldTags}
+	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldAuthType, fieldIdentity, fieldPassword, fieldProxy, fieldGroup, fieldTags}
 }
 
 func (v *EditView) prevField() {
@@ -418,9 +473,13 @@ func (v *EditView) validate() {
 		v.errors[fieldUser] = "User is required"
 	}
 
-	// Identity file validation for key auth
-	if v.values[fieldAuthType] == string(AuthKey) && v.values[fieldIdentity] == "" {
+	// Auth type specific validation
+	authType := v.values[fieldAuthType]
+	if authType == string(AuthKey) && v.values[fieldIdentity] == "" {
 		v.errors[fieldIdentity] = "Key file required for key auth"
+	}
+	if authType == string(AuthPassword) && v.securePassword == "" {
+		v.errors[fieldPassword] = "Password required for password auth"
 	}
 }
 
@@ -438,12 +497,26 @@ func (v *EditView) save() tea.Cmd {
 	// Parse tags
 	tags := parseTags(v.values[fieldTags])
 
+	// Parse auth type
+	authType := models.AuthType(v.values[fieldAuthType])
+	if authType == "" {
+		if v.securePassword != "" {
+			authType = models.AuthTypePassword
+		} else if v.values[fieldIdentity] != "" {
+			authType = models.AuthTypeKey
+		} else {
+			authType = models.AuthTypeAgent
+		}
+	}
+
 	host := models.Host{
 		Name:     v.values[fieldName],
 		Host:     v.values[fieldHost],
 		Port:     port,
 		User:     v.values[fieldUser],
+		Password: v.securePassword,
 		Identity: v.values[fieldIdentity],
+		AuthType: authType,
 		Proxy:    v.values[fieldProxy],
 		Group:    v.values[fieldGroup],
 		Tags:     tags,
@@ -477,6 +550,11 @@ func parseTags(tagsStr string) []string {
 
 // View renders the edit form
 func (v *EditView) View() string {
+	// Show password entry overlay
+	if v.enterPassword {
+		return v.renderPasswordEntry()
+	}
+	
 	// Show file browser if active
 	if v.showBrowser && v.fileBrowser != nil {
 		return v.renderFileBrowser()
@@ -500,7 +578,23 @@ func (v *EditView) View() string {
 	body := lipgloss.JoinVertical(lipgloss.Left, fields...)
 	form := BorderStyle.Width(60).Render(body)
 
-	help := HelpStyle.Render("↑↓ move | type to edit | ← select key file | enter: save | esc: cancel")
+	help := HelpStyle.Render("↑↓ move | type to edit | ← select key file/password | enter: save | esc: cancel")
+
+	return header + "\n\n" + form + "\n\n" + help
+}
+
+func (v *EditView) renderPasswordEntry() string {
+	header := BorderStyle.Width(60).Render(
+		TitleStyle.Render(" Enter Password "),
+	)
+
+	body := lipgloss.NewStyle().
+		Width(56).
+		Render("Password: " + v.passwordMasked + "_")
+
+	form := BorderStyle.Width(60).Render(body)
+
+	help := HelpStyle.Render("type to enter password | enter: confirm | esc: cancel")
 
 	return header + "\n\n" + form + "\n\n" + help
 }
@@ -519,6 +613,15 @@ func (v *EditView) renderField(f string) string {
 		label = "Identity File"
 		if value == "" {
 			value = "(default: ~/.ssh/id_rsa)"
+		}
+	case fieldPassword:
+		label = "Password"
+		if v.enterPassword {
+			value = v.passwordMasked + "_"
+		} else if v.securePassword != "" {
+			value = "•••••••• (← to edit)"
+		} else {
+			value = "(empty) (← to set)"
 		}
 	case fieldProxy:
 		label = "Proxy Jump"
