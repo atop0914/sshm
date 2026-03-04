@@ -72,15 +72,37 @@ func (c *Connector) ConnectWithAuth(host models.Host, auth AuthMethod) error {
 	return nil
 }
 
-// buildClientConfig builds SSH client configuration
+// buildClientConfig builds SSH client configuration based on host's AuthType
 func (c *Connector) buildClientConfig(host models.Host) (*ssh.ClientConfig, error) {
-	// Try password first if available, then SSH agent, then key file
-	methods := []AuthMethod{AuthMethodPassword, AuthMethodSSHAgent, AuthMethodKeyFile}
+	// Use the host's AuthType if specified
+	authType := string(host.AuthType)
 
-	for _, method := range methods {
-		config, err := c.buildClientConfigWithAuth(host, method)
-		if err == nil && len(config.Auth) > 0 {
-			return config, nil
+	switch authType {
+	case string(models.AuthTypePassword):
+		if host.Password != "" {
+			return c.buildClientConfigWithAuth(host, AuthMethodPassword)
+		}
+		// Fall through to try other methods if no password
+		return nil, fmt.Errorf("password auth selected but no password set")
+
+	case string(models.AuthTypeKey):
+		if host.Identity != "" {
+			return c.buildClientConfigWithAuth(host, AuthMethodKeyFile)
+		}
+		// Try default keys if no identity specified
+		return c.buildClientConfigWithAuth(host, AuthMethodKeyFile)
+
+	case string(models.AuthTypeAgent):
+		return c.buildClientConfigWithAuth(host, AuthMethodSSHAgent)
+
+	default:
+		// Legacy behavior: try all methods
+		methods := []AuthMethod{AuthMethodPassword, AuthMethodSSHAgent, AuthMethodKeyFile}
+		for _, method := range methods {
+			config, err := c.buildClientConfigWithAuth(host, method)
+			if err == nil && len(config.Auth) > 0 {
+				return config, nil
+			}
 		}
 	}
 
