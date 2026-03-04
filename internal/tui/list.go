@@ -396,7 +396,7 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 
 	status := statusLeft + statusRight
 
-	helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | q: Quit"
+	helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
 	
 	help := HelpStyle.Width(width).Render(helpText)
 

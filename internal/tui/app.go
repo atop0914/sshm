@@ -5,19 +5,21 @@ import (
 	"os"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/sshm/sshm/internal/config"
 	"github.com/sshm/sshm/internal/store"
 )
 
 // App represents the main TUI application
 type App struct {
-	store      *store.FileStore
-	history    *store.HistoryStore
-	listView   *ListView
-	editView   *EditView
+	store       *store.FileStore
+	history     *store.HistoryStore
+	listView    *ListView
+	editView    *EditView
 	historyView *HistoryView
-	view       string // "list", "add", "edit", "detail", "history"
-	quitting   bool
-	err        error
+	helpView    *HelpView
+	view        string // "list", "add", "edit", "detail", "history", "help"
+	quitting    bool
+	err         error
 }
 
 // New creates a new TUI application
@@ -26,10 +28,11 @@ func New(storePath string) (*App, error) {
 	h := store.NewHistoryStore("")
 
 	return &App{
-		store:       s,
-		history:     h,
-		listView:    NewListView(s),
-		view:        "list",
+		store:    s,
+		history:  h,
+		listView: NewListView(s),
+		helpView: NewHelpView(),
+		view:     "list",
 	}, nil
 }
 
@@ -75,6 +78,8 @@ func (m *App) View() string {
 			return m.historyView.View()
 		}
 		return m.renderHistory()
+	case "help":
+		return m.helpView.View()
 	default:
 		return m.listView.View()
 	}
@@ -86,7 +91,7 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.editView != nil {
 			model, cmd := m.editView.Update(msg)
 			m.editView = model.(*EditView)
-			
+
 			// Check if edit view signaled quit (save completed or cancel)
 			if m.editView.saved || msg.String() == "esc" {
 				m.view = "list"
@@ -97,10 +102,25 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Handle help view
+	if m.view == "help" {
+		if msg.String() == "esc" || msg.String() == "q" || msg.String() == "?" {
+			m.view = "list"
+		}
+		return m, nil
+	}
+
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
+	case "?":
+		// Show help view
+		m.helpView = NewHelpView()
+		m.view = "help"
+	case "i":
+		// Import from SSH config
+		return m.handleSSHConfigImport()
 	case "a":
 		// Start add mode
 		m.editView = NewAddView(m.store)
@@ -151,6 +171,32 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// handleSSHConfigImport imports hosts from ~/.ssh/config
+func (m *App) handleSSHConfigImport() (tea.Model, tea.Cmd) {
+	hosts, err := config.ImportFromSSHConfig("")
+	if err != nil {
+		m.err = fmt.Errorf("failed to import SSH config: %w", err)
+		return m, nil
+	}
+
+	if len(hosts) == 0 {
+		fmt.Println("No new hosts found in ~/.ssh/config")
+		return m, nil
+	}
+
+	// Add imported hosts to store
+	imported := 0
+	for _, h := range hosts {
+		if err := m.store.AddHost(h); err == nil {
+			imported++
+		}
+	}
+
+	fmt.Printf("Imported %d hosts from ~/.ssh/config\n", imported)
+	m.listView.Refresh()
+	return m, nil
+}
+
 func (m *App) renderList() string {
 	hosts := m.store.ListHosts()
 
@@ -177,7 +223,7 @@ func (m *App) renderAdd() string {
 	if m.editView != nil {
 		return m.editView.View()
 	}
-	
+
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Add New Host"),
 	)
@@ -193,7 +239,7 @@ func (m *App) renderEdit() string {
 	if m.editView != nil {
 		return m.editView.View()
 	}
-	
+
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Edit Host"),
 	)
@@ -207,7 +253,7 @@ func (m *App) renderEdit() string {
 
 func (m *App) renderDetail() string {
 	selectedHost := m.listView.GetSelectedHost()
-	
+
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Host Details"),
 	)
@@ -243,7 +289,7 @@ func (m *App) renderHistory() string {
 	if m.historyView != nil {
 		return m.historyView.View()
 	}
-	
+
 	header := BorderStyle.Width(60).Render(
 		HeaderStyle.Render("Connection History"),
 	)
