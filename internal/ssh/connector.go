@@ -124,8 +124,15 @@ func (c *Connector) buildClientConfigWithAuth(host models.Host, auth AuthMethod)
 		}
 
 	case AuthMethodSSHAgent:
+		// Try agent auth - may return nil if agent not available (graceful fallback)
 		if err := c.addSSHAgentAuth(config); err != nil {
 			return nil, err
+		}
+		// If no auth added (agent not available), try default keys as fallback
+		if len(config.Auth) == 0 {
+			if err := c.addDefaultKeysAuth(config); err != nil {
+				return nil, err
+			}
 		}
 
 	case AuthMethodKeyFile, AuthMethodNone:
@@ -149,21 +156,26 @@ func (c *Connector) buildClientConfigWithAuth(host models.Host, auth AuthMethod)
 }
 
 // addSSHAgentAuth adds SSH agent authentication
+// Returns nil if agent is not available (graceful fallback)
 func (c *Connector) addSSHAgentAuth(config *ssh.ClientConfig) error {
 	socket := os.Getenv("SSH_AUTH_SOCK")
 	if socket == "" {
-		return fmt.Errorf("SSH_AUTH_SOCK not set")
+		// Agent not available - return nil to allow fallback to other auth methods
+		return nil
 	}
 
 	conn, err := net.Dial("unix", socket)
 	if err != nil {
-		return fmt.Errorf("failed to connect to SSH agent: %w", err)
+		// Agent socket not accessible - return nil to allow fallback
+		return nil
 	}
+	defer conn.Close()
 
 	sshAgent := agent.NewClient(conn)
 	signers, err := sshAgent.Signers()
 	if err != nil || len(signers) == 0 {
-		return fmt.Errorf("no keys available from SSH agent: %w", err)
+		// No keys available from agent - return nil to allow fallback
+		return nil
 	}
 
 	config.Auth = append(config.Auth, ssh.PublicKeys(signers...))
