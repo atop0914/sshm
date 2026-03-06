@@ -29,15 +29,17 @@ type StoreInterface interface {
 
 // FileStore manages host data persistence in a file
 type FileStore struct {
-	path  string
-	hosts map[string]models.Host
+	path    string
+	hosts   map[string]models.Host
+	config  *models.Config
 }
 
 // NewFileStore creates a new FileStore instance
 func NewFileStore(path string) *FileStore {
 	s := &FileStore{
-		path:  path,
-		hosts: make(map[string]models.Host),
+		path:    path,
+		hosts:   make(map[string]models.Host),
+		config:  &models.Config{},
 	}
 	s.load()
 	return s
@@ -187,6 +189,88 @@ func (s *FileStore) FilterByGroup(group string) []models.Host {
 // Count returns the number of hosts in the store
 func (s *FileStore) Count() int {
 	return len(s.hosts)
+}
+
+// LoadConfig loads the full configuration including profiles
+func (s *FileStore) LoadConfig() (*models.Config, error) {
+	data, err := os.ReadFile(s.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return &models.Config{}, nil
+		}
+		return nil, fmt.Errorf("failed to read config: %w", err)
+	}
+
+	var cfg models.Config
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		// Try legacy format (just hosts array)
+		var hosts []models.Host
+		if jsonErr := json.Unmarshal(data, &hosts); jsonErr == nil {
+			cfg.Hosts = hosts
+			return &cfg, nil
+		}
+		return nil, fmt.Errorf("failed to parse config: %w", err)
+	}
+
+	s.config = &cfg
+	return &cfg, nil
+}
+
+// AddProfile adds a profile to the config
+func (s *FileStore) AddProfile(profile models.Profile) error {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	// Add or update profile
+	found := false
+	for i, p := range cfg.Profiles {
+		if p.Name == profile.Name {
+			cfg.Profiles[i] = profile
+			found = true
+			break
+		}
+	}
+	if !found {
+		cfg.Profiles = append(cfg.Profiles, profile)
+	}
+
+	// Save back to file
+	return s.saveConfig(cfg)
+}
+
+// DeleteProfile removes a profile by name
+func (s *FileStore) DeleteProfile(name string) error {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return err
+	}
+
+	var profiles []models.Profile
+	for _, p := range cfg.Profiles {
+		if p.Name != name {
+			profiles = append(profiles, p)
+		}
+	}
+	cfg.Profiles = profiles
+
+	return s.saveConfig(cfg)
+}
+
+// saveConfig saves the full config to file
+func (s *FileStore) saveConfig(cfg *models.Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	if err := os.WriteFile(s.path, data, 0600); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	s.config = cfg
+	return nil
 }
 
 // helper functions

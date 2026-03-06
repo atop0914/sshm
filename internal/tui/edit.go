@@ -24,6 +24,7 @@ const (
 	fieldProxy     = "proxy"
 	fieldGroup     = "group"
 	fieldTags      = "tags"
+	fieldProfile   = "profile"
 )
 
 // AuthType represents authentication method
@@ -50,6 +51,7 @@ type EditView struct {
 	showBrowser  bool
 	existingTags []string
 	existingGroups []string
+	existingProfiles []string
 	enterPassword bool // flag to indicate we're entering password
 	passwordMasked string // placeholder display for password
 }
@@ -162,10 +164,11 @@ func (fb *FileBrowser) View(width int) string {
 
 // NewEditView creates a new edit view for adding a host
 func NewAddView(s *store.FileStore) *EditView {
-	// Collect existing groups and tags for suggestions
+	// Collect existing groups, tags and profiles for suggestions
 	hosts := s.ListHosts()
 	groups := collectGroups(hosts)
 	tags := collectTags(hosts)
+	profiles := collectProfiles(s)
 	
 	return &EditView{
 		store:         s,
@@ -177,6 +180,7 @@ func NewAddView(s *store.FileStore) *EditView {
 		saved:         false,
 		existingGroups: groups,
 		existingTags:  tags,
+		existingProfiles: profiles,
 	}
 }
 
@@ -187,10 +191,11 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 		return nil, err
 	}
 	
-	// Collect existing groups and tags for suggestions
+	// Collect existing groups, tags and profiles for suggestions
 	hosts := s.ListHosts()
 	groups := collectGroups(hosts)
 	tags := collectTags(hosts)
+	profiles := collectProfiles(s)
 	
 	// Determine auth type from host
 	authType := string(host.AuthType)
@@ -219,6 +224,7 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 			fieldProxy:    host.Proxy,
 			fieldGroup:    host.Group,
 			fieldTags:     joinTags(host.Tags),
+			fieldProfile:  host.Profile,
 		},
 		securePassword: host.Password,
 		passwordMasked: "••••••••",
@@ -226,6 +232,7 @@ func NewEditView(s *store.FileStore, hostID string) (*EditView, error) {
 		saved:          false,
 		existingGroups: groups,
 		existingTags:  tags,
+		existingProfiles: profiles,
 	}, nil
 }
 
@@ -255,6 +262,20 @@ func collectTags(hosts []models.Host) []string {
 		tags = append(tags, t)
 	}
 	return tags
+}
+
+// collectProfiles collects existing profile names from the store config
+func collectProfiles(s *store.FileStore) []string {
+	cfg, err := s.LoadConfig()
+	if err != nil {
+		return nil
+	}
+	
+	profiles := make([]string, 0, len(cfg.Profiles))
+	for _, p := range cfg.Profiles {
+		profiles = append(profiles, p.Name)
+	}
+	return profiles
 }
 
 func joinTags(tags []string) string {
@@ -410,7 +431,7 @@ func (v *EditView) handlePasswordKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (v *EditView) fields() []string {
-	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldAuthType, fieldIdentity, fieldPassword, fieldProxy, fieldGroup, fieldTags}
+	return []string{fieldName, fieldHost, fieldPort, fieldUser, fieldAuthType, fieldIdentity, fieldPassword, fieldProxy, fieldGroup, fieldTags, fieldProfile}
 }
 
 func (v *EditView) prevField() {
@@ -520,6 +541,7 @@ func (v *EditView) save() tea.Cmd {
 		Proxy:    v.values[fieldProxy],
 		Group:    v.values[fieldGroup],
 		Tags:     tags,
+		Profile:  v.values[fieldProfile],
 	}
 
 	if v.mode == "add" {
@@ -635,6 +657,11 @@ func (v *EditView) renderField(f string) string {
 		label = "Group"
 	case fieldTags:
 		label = "Tags"
+	case fieldProfile:
+		label = "Profile"
+		if value == "" {
+			value = "(default)"
+		}
 	}
 
 	row := fmt.Sprintf("  %s: %s", label, value)
@@ -657,6 +684,14 @@ func (v *EditView) renderField(f string) string {
 		suggestions := lipgloss.NewStyle().
 			Foreground(secondaryColor).
 			Render(fmt.Sprintf("    Suggestions: %v", v.existingGroups[:min(3, len(v.existingGroups))]))
+		row += "\n" + suggestions
+	}
+
+	// Show suggestions for profile
+	if f == fieldProfile && len(v.existingProfiles) > 0 {
+		suggestions := lipgloss.NewStyle().
+			Foreground(secondaryColor).
+			Render(fmt.Sprintf("    Available: %v", v.existingProfiles))
 		row += "\n" + suggestions
 	}
 

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/sshm/sshm/internal/models"
 	"golang.org/x/crypto/ssh"
@@ -37,8 +38,8 @@ func NewConnector() *Connector {
 }
 
 // Connect establishes an SSH connection to the host
-func (c *Connector) Connect(host models.Host) error {
-	config, err := c.buildClientConfig(host)
+func (c *Connector) Connect(host models.Host, profile models.Profile) error {
+	config, err := c.buildClientConfig(host, profile)
 	if err != nil {
 		return fmt.Errorf("failed to build client config: %w", err)
 	}
@@ -55,8 +56,8 @@ func (c *Connector) Connect(host models.Host) error {
 }
 
 // ConnectWithAuth connects using specified auth method
-func (c *Connector) ConnectWithAuth(host models.Host, auth AuthMethod) error {
-	config, err := c.buildClientConfigWithAuth(host, auth)
+func (c *Connector) ConnectWithAuth(host models.Host, profile models.Profile, auth AuthMethod) error {
+	config, err := c.buildClientConfigWithAuth(host, profile, auth)
 	if err != nil {
 		return fmt.Errorf("failed to build client config: %w", err)
 	}
@@ -73,33 +74,33 @@ func (c *Connector) ConnectWithAuth(host models.Host, auth AuthMethod) error {
 }
 
 // buildClientConfig builds SSH client configuration based on host's AuthType
-func (c *Connector) buildClientConfig(host models.Host) (*ssh.ClientConfig, error) {
+func (c *Connector) buildClientConfig(host models.Host, profile models.Profile) (*ssh.ClientConfig, error) {
 	// Use the host's AuthType if specified
 	authType := string(host.AuthType)
 
 	switch authType {
 	case string(models.AuthTypePassword):
 		if host.Password != "" {
-			return c.buildClientConfigWithAuth(host, AuthMethodPassword)
+			return c.buildClientConfigWithAuth(host, profile, AuthMethodPassword)
 		}
 		// Fall through to try other methods if no password
 		return nil, fmt.Errorf("password auth selected but no password set")
 
 	case string(models.AuthTypeKey):
 		if host.Identity != "" {
-			return c.buildClientConfigWithAuth(host, AuthMethodKeyFile)
+			return c.buildClientConfigWithAuth(host, profile, AuthMethodKeyFile)
 		}
 		// Try default keys if no identity specified
-		return c.buildClientConfigWithAuth(host, AuthMethodKeyFile)
+		return c.buildClientConfigWithAuth(host, profile, AuthMethodKeyFile)
 
 	case string(models.AuthTypeAgent):
-		return c.buildClientConfigWithAuth(host, AuthMethodSSHAgent)
+		return c.buildClientConfigWithAuth(host, profile, AuthMethodSSHAgent)
 
 	default:
 		// Legacy behavior: try all methods
 		methods := []AuthMethod{AuthMethodPassword, AuthMethodSSHAgent, AuthMethodKeyFile}
 		for _, method := range methods {
-			config, err := c.buildClientConfigWithAuth(host, method)
+			config, err := c.buildClientConfigWithAuth(host, profile, method)
 			if err == nil && len(config.Auth) > 0 {
 				return config, nil
 			}
@@ -110,11 +111,12 @@ func (c *Connector) buildClientConfig(host models.Host) (*ssh.ClientConfig, erro
 }
 
 // buildClientConfigWithAuth builds SSH client configuration with specific auth method
-func (c *Connector) buildClientConfigWithAuth(host models.Host, auth AuthMethod) (*ssh.ClientConfig, error) {
+func (c *Connector) buildClientConfigWithAuth(host models.Host, profile models.Profile, auth AuthMethod) (*ssh.ClientConfig, error) {
 	config := &ssh.ClientConfig{
-		User: host.User,
-		Auth: []ssh.AuthMethod{},
+		User:            host.User,
+		Auth:            []ssh.AuthMethod{},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+		Timeout:         time.Duration(profile.Timeout) * time.Second,
 	}
 
 	switch auth {
@@ -315,11 +317,11 @@ func (c *Connector) Close() error {
 }
 
 // ConnectAndInteract connects to host and starts an interactive session
-func ConnectAndInteract(host models.Host) error {
+func ConnectAndInteract(host models.Host, profile models.Profile) error {
 	connector := NewConnector()
 	defer connector.Close()
 
-	if err := connector.Connect(host); err != nil {
+	if err := connector.Connect(host, profile); err != nil {
 		return err
 	}
 

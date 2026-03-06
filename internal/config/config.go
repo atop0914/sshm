@@ -12,8 +12,45 @@ import (
 // Config holds the entire application configuration
 // Uses models.Host and models.SSHConfig for type consistency
 type Config struct {
-	Hosts   []models.Host     `json:"hosts" yaml:"hosts"`
-	Configs []models.SSHConfig `json:"configs" yaml:"configs"`
+	Hosts    []models.Host      `json:"hosts" yaml:"hosts"`
+	Configs  []models.SSHConfig  `json:"configs" yaml:"configs"`
+	Profiles []models.Profile   `json:"profiles" yaml:"profiles"`
+}
+
+// GetProfile returns the profile for a host, falling back to default if not found
+func (c *Config) GetProfile(host models.Host) models.Profile {
+	// If host specifies a profile, look it up
+	if host.Profile != "" {
+		for _, p := range c.Profiles {
+			if p.Name == host.Profile {
+				return p
+			}
+		}
+	}
+	// Fall back to default profile
+	return models.DefaultProfile()
+}
+
+// AddProfile adds a new profile to the configuration
+func (c *Config) AddProfile(profile models.Profile) {
+	// Remove existing profile with same name
+	c.Profiles = removeProfile(c.Profiles, profile.Name)
+	c.Profiles = append(c.Profiles, profile)
+}
+
+// RemoveProfile removes a profile by name
+func (c *Config) RemoveProfile(name string) {
+	c.Profiles = removeProfile(c.Profiles, name)
+}
+
+func removeProfile(profiles []models.Profile, name string) []models.Profile {
+	result := make([]models.Profile, 0, len(profiles))
+	for _, p := range profiles {
+		if p.Name != name {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // GetDefaultConfigPath returns the default configuration file path
