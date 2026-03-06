@@ -23,6 +23,7 @@ type Host struct {
 	Group           string    `json:"group,omitempty" yaml:"group,omitempty"`
 	Tags            []string  `json:"tags,omitempty" yaml:"tags,omitempty"`
 	ConnectionCount int       `json:"connection_count,omitempty" yaml:"connection_count,omitempty"`
+	Profile         string    `json:"profile,omitempty" yaml:"profile,omitempty"` // Profile name to use for this host
 }
 
 // SSHConfig represents SSH configuration settings
@@ -36,6 +37,7 @@ type SSHConfig struct {
 
 // Config holds the entire application configuration
 type Config struct {
-	Hosts  []Host      `json:"hosts" yaml:"hosts"`
-	Configs []SSHConfig `json:"configs" yaml:"configs"`
+	Hosts     []Host     `json:"hosts" yaml:"hosts"`
+	Configs   []SSHConfig `json:"configs" yaml:"configs"`
+	Profiles  []Profile  `json:"profiles" yaml:"profiles"`
 }
