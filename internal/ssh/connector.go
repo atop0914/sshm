@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"os/signal"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"github.com/sshm/sshm/internal/models"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
+	"golang.org/x/term"
 )
 
 // AuthMethod represents the authentication method for SSH
@@ -349,6 +351,16 @@ func ConnectAndInteract(host models.Host, profile models.Profile) error {
 		return fmt.Errorf("request for pseudo terminal failed: %w", err)
 	}
 
+	// Start a goroutine to handle terminal resize
+	resizeChan := make(chan os.Signal, 1)
+	signal.Notify(resizeChan, syscall.SIGWINCH)
+	go func() {
+		for range resizeChan {
+			width, height := getTerminalSize()
+			session.WindowChange(height, width)
+		}
+	}()
+
 	err = session.Shell()
 	if err != nil {
 		return fmt.Errorf("failed to start shell: %w", err)
@@ -366,9 +378,15 @@ func getTerminalSize() (width, height int) {
 	return width, height
 }
 
-// getTerminalSizeImpl gets terminal size using environment or defaults
+// getTerminalSizeImpl gets terminal size using multiple methods
 func getTerminalSizeImpl() (int, int, error) {
-	// Try to use environment variables first (for common cases)
+	// Try to use golang.org/x/term for proper terminal size detection
+	width, height, err := term.GetSize(syscall.Stdout)
+	if err == nil && width > 0 && height > 0 {
+		return width, height, nil
+	}
+
+	// Fallback to environment variables
 	if w := os.Getenv("COLUMNS"); w != "" {
 		if h := os.Getenv("LINES"); h != "" {
 			width, err1 := strconv.Atoi(w)
@@ -380,7 +398,7 @@ func getTerminalSizeImpl() (int, int, error) {
 	}
 
 	// Fallback to default
-	return 80, 24, nil
+	return 80, 24, fmt.Errorf("could not determine terminal size")
 }
 
 // CheckConnection tests if a connection can be established
