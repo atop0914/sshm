@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/sshm/sshm/internal/clipboard"
 	"github.com/sshm/sshm/internal/config"
 	"github.com/sshm/sshm/internal/store"
 )
@@ -149,6 +150,15 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if selectedHost != nil {
 			m.historyView = NewHistoryView(m.store, m.history, selectedHost.ID)
 			m.view = "history"
+		}
+	case "c":
+		// Copy SSH command to clipboard
+		selectedHost := m.listView.GetSelectedHost()
+		if selectedHost != nil {
+			sshCmd := selectedHost.GenerateSSHCommand()
+			if err := clipboard.CopyToClipboard(sshCmd); err != nil {
+				m.err = fmt.Errorf("failed to copy to clipboard: %w", err)
+			}
 		}
 	case "esc":
 		m.view = "list"

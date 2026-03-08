@@ -1,5 +1,10 @@
 package models
 
+import (
+	"fmt"
+	"strings"
+)
+
 // AuthType represents the authentication method
 type AuthType string
 
@@ -40,4 +45,29 @@ type Config struct {
 	Hosts     []Host     `json:"hosts" yaml:"hosts"`
 	Configs   []SSHConfig `json:"configs" yaml:"configs"`
 	Profiles  []Profile  `json:"profiles" yaml:"profiles"`
+}
+
+// GenerateSSHCommand generates an SSH command string from the host
+func (h *Host) GenerateSSHCommand() string {
+	args := []string{"ssh"}
+
+	// Add port if non-default
+	if h.Port != 22 {
+		args = append(args, "-p", fmt.Sprintf("%d", h.Port))
+	}
+
+	// Add identity file if specified
+	if h.Identity != "" {
+		args = append(args, "-i", h.Identity)
+	}
+
+	// Add proxy/jump host if specified
+	if h.Proxy != "" {
+		args = append(args, "-J", h.Proxy)
+	}
+
+	// Add user@host
+	args = append(args, fmt.Sprintf("%s@%s", h.User, h.Host))
+
+	return strings.Join(args, " ")
 }

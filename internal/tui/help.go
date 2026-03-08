@@ -59,6 +59,7 @@ func (v *HelpView) View() string {
 		{"a", "Add new host"},
 		{"e", "Edit selected host"},
 		{"d", "View host details"},
+		{"c", "Copy SSH command to clipboard"},
 		{"h", "View connection history (all)"},
 		{"H", "View history for selected host"},
 		{"/", "Filter/search hosts"},
