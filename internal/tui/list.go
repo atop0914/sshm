@@ -36,6 +36,9 @@ type ListView struct {
 	filtering   bool
 	height      int
 	width       int
+	connecting  bool
+	connectHost string
+	connectErr  string
 }
 
 // NewListView creates a new list view
@@ -57,6 +60,13 @@ func (v *ListView) Init() tea.Cmd {
 	return nil
 }
 
+// connectMsg is used to signal connection result
+type connectMsg struct {
+	host    models.Host
+	err     error
+	success bool
+}
+
 // Update handles messages
 func (v *ListView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -65,6 +75,20 @@ func (v *ListView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		v.height = msg.Height
 		v.width = msg.Width
+		return v, nil
+	case connectMsg:
+		// Handle connection result
+		if msg.success {
+			if err := ssh.LaunchSSH(msg.host); err != nil {
+				v.connectErr = fmt.Sprintf("Failed to connect: %v", err)
+				v.connecting = false
+			}
+			// SSH launched - quit the TUI
+			return v, tea.Quit
+		}
+		// Connection failed
+		v.connectErr = msg.err.Error()
+		v.connecting = false
 		return v, nil
 	}
 	return v, nil
@@ -122,16 +146,22 @@ func (v *ListView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		v.filtering = true
 		v.filterText = ""
 	case "enter":
-		// Connect to selected host
+		// Quick Connect: Connect to selected host
 		if len(v.filtered) > 0 && v.cursor < len(v.filtered) {
 			host := v.filtered[v.cursor]
-			fmt.Printf("Connecting to %s...\n", host.Name)
-			// Exit the TUI and launch SSH
-			if err := ssh.LaunchSSH(host); err != nil {
-				fmt.Printf("Failed to connect: %v\n", err)
+			// Set connecting state to show progress
+			v.connecting = true
+			v.connectHost = host.Name
+			v.connectErr = ""
+			// Return a command to test connection in background
+			return v, func() tea.Msg {
+				// Test connection first
+				if err := ssh.Ping(host.Host, host.Port); err != nil {
+					return connectMsg{host: host, err: err, success: false}
+				}
+				// Connection OK, return success to launch SSH
+				return connectMsg{host: host, success: true}
 			}
-			// Return quit to exit the TUI and return control
-			return v, tea.Quit
 		}
 	case "a":
 		// Handled by parent App
@@ -371,6 +401,28 @@ func (v *ListView) renderTags(tags []string, availableWidth int) string {
 }
 
 func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
+	// Show connection status if connecting or error
+	if v.connecting {
+		connectMsg := fmt.Sprintf("Connecting to %s...", v.connectHost)
+		connectingStatus := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("82")). // Green
+			Render(connectMsg)
+		
+		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
+		help := HelpStyle.Width(width).Render(helpText)
+		return help + "\n" + StatusBar(connectingStatus)
+	}
+
+	if v.connectErr != "" {
+		errorStatus := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("203")). // Red
+			Render("✗ " + v.connectErr)
+		
+		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
+		help := HelpStyle.Width(width).Render(helpText)
+		return help + "\n" + StatusBar(errorStatus)
+	}
+
 	// Status text
 	hostCount := fmt.Sprintf("%d hosts", len(hosts))
 	if v.filterText != "" {
