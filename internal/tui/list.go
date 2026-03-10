@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -39,6 +40,8 @@ type ListView struct {
 	connecting  bool
 	connectHost string
 	connectErr  string
+	pinging     bool // Whether we're currently pinging hosts
+	pingMu      sync.Mutex
 }
 
 // NewListView creates a new list view
@@ -57,7 +60,8 @@ func NewListView(s *store.FileStore) *ListView {
 
 // Init initializes the list view
 func (v *ListView) Init() tea.Cmd {
-	return nil
+	// Start pinging hosts in background
+	return v.pingHostsCmd()
 }
 
 // connectMsg is used to signal connection result
@@ -65,6 +69,65 @@ type connectMsg struct {
 	host    models.Host
 	err     error
 	success bool
+}
+
+// pingResultMsg is used to signal ping result for a host
+type pingResultMsg struct {
+	hostID string
+	online bool
+	err    error
+}
+
+// pingHostsCmd returns a command that pings all hosts in the background
+func (v *ListView) pingHostsCmd() tea.Cmd {
+	return func() tea.Msg {
+		hosts := v.store.ListHosts()
+		var wg sync.WaitGroup
+		results := make(chan pingResultMsg, len(hosts))
+
+		for _, h := range hosts {
+			wg.Add(1)
+			go func(host models.Host) {
+				defer wg.Done()
+				online := true
+				err := ssh.Ping(host.Host, host.Port)
+				if err != nil {
+					online = false
+				}
+				results <- pingResultMsg{hostID: host.ID, online: online, err: err}
+			}(h)
+		}
+
+		go func() {
+			wg.Wait()
+			close(results)
+		}()
+
+		// Collect results
+		for result := range results {
+			// Update host status in background (don't block)
+			v.updateHostOnlineStatus(result.hostID, result.online)
+		}
+
+		return tea.Msg(pingResultMsg{hostID: "", online: false}) // Signal ping complete
+	}
+}
+
+// updateHostOnlineStatus updates the online status for a host
+func (v *ListView) updateHostOnlineStatus(hostID string, online bool) {
+	v.pingMu.Lock()
+	defer v.pingMu.Unlock()
+
+	for i := range v.hosts {
+		if v.hosts[i].ID == hostID {
+			v.hosts[i].Online = &online
+		}
+	}
+	for i := range v.filtered {
+		if v.filtered[i].ID == hostID {
+			v.filtered[i].Online = &online
+		}
+	}
 }
 
 // Update handles messages
@@ -90,6 +153,13 @@ func (v *ListView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		v.connectErr = msg.err.Error()
 		v.connecting = false
 		return v, nil
+	case pingResultMsg:
+		// Ping completed - refresh filtered list to show updated status
+		if msg.hostID == "" {
+			// This is the completion signal
+			v.updateFiltered()
+			return v, nil
+		}
 	}
 	return v, nil
 }
@@ -331,6 +401,18 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 		cursor = "›"
 	}
 
+	// Online/offline status indicator
+	var statusIndicator string
+	if h.Online != nil {
+		if *h.Online {
+			statusIndicator = "●" // Green dot for online
+		} else {
+			statusIndicator = "○" // Gray circle for offline
+		}
+	} else {
+		statusIndicator = "◌" // Dotted circle for unknown
+	}
+
 	// Host info
 	hostInfo := fmt.Sprintf("%s@%s:%d", h.User, h.Host, h.Port)
 
@@ -340,8 +422,8 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 		groupInfo = "[" + h.Group + "]"
 	}
 
-	// Calculate available width for name
-	availableWidth := width - len(cursor) - len(hostInfo) - len(groupInfo) - 4
+	// Calculate available width for name (subtract status indicator space)
+	availableWidth := width - len(cursor) - len(statusIndicator) - len(hostInfo) - len(groupInfo) - 5
 	if availableWidth < 10 {
 		availableWidth = 10
 	}
@@ -355,13 +437,25 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 	// Render tags
 	tagsStr := v.renderTags(h.Tags, availableWidth)
 
+	// Determine status color
+	var statusColor lipgloss.Color
+	if h.Online != nil {
+		if *h.Online {
+			statusColor = lipgloss.Color("82") // Green
+		} else {
+			statusColor = lipgloss.Color("241") // Gray
+		}
+	} else {
+		statusColor = lipgloss.Color("245") // Light gray for unknown
+	}
+
 	// Build the row
 	var row string
 	if selected {
-		row = fmt.Sprintf(" %s %-*s %s %s %s", cursor, availableWidth, name, groupInfo, hostInfo, tagsStr)
+		row = fmt.Sprintf(" %s %s %-*s %s %s %s", cursor, lipgloss.NewStyle().Foreground(statusColor).Render(statusIndicator), availableWidth, name, groupInfo, hostInfo, tagsStr)
 		row = SelectedStyle.Width(width).Render(row)
 	} else {
-		row = fmt.Sprintf(" %s %-*s %s %s %s", cursor, availableWidth, name, groupInfo, hostInfo, tagsStr)
+		row = fmt.Sprintf(" %s %s %-*s %s %s %s", cursor, lipgloss.NewStyle().Foreground(statusColor).Render(statusIndicator), availableWidth, name, groupInfo, hostInfo, tagsStr)
 		row = NormalStyle.Width(width).Render(row)
 	}
 
@@ -455,13 +549,35 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 	return help + "\n" + StatusBar(status)
 }
 
-// Refresh reloads hosts from store
+// Refresh reloads hosts from store and re-pings all hosts
 func (v *ListView) Refresh() {
 	v.hosts = v.store.ListHosts()
 	v.updateFiltered()
 	if v.cursor >= len(v.filtered) {
 		v.cursor = max(0, len(v.filtered)-1)
 	}
+	// Re-ping hosts in background
+	go v.pingHostsBackground()
+}
+
+// pingHostsBackground pings all hosts without blocking (for Refresh)
+func (v *ListView) pingHostsBackground() {
+	hosts := v.store.ListHosts()
+	var wg sync.WaitGroup
+
+	for _, h := range hosts {
+		wg.Add(1)
+		go func(host models.Host) {
+			defer wg.Done()
+			online := true
+			err := ssh.Ping(host.Host, host.Port)
+			if err != nil {
+				online = false
+			}
+			v.updateHostOnlineStatus(host.ID, online)
+		}(h)
+	}
+	wg.Wait()
 }
 
 // GetSelectedHost returns the currently selected host

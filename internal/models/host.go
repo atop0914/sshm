@@ -29,6 +29,7 @@ type Host struct {
 	Tags            []string  `json:"tags,omitempty" yaml:"tags,omitempty"`
 	ConnectionCount int       `json:"connection_count,omitempty" yaml:"connection_count,omitempty"`
 	Profile         string    `json:"profile,omitempty" yaml:"profile,omitempty"` // Profile name to use for this host
+	Online          *bool     `json:"online,omitempty" yaml:"online,omitempty"`   // Online status (nil = unknown, true = online, false = offline)
 }
 
 // SSHConfig represents SSH configuration settings
