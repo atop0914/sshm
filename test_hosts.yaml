@@ -1,0 +1,17 @@
+hosts:
+  - id: "1"
+    name: "production-web"
+    host: "192.168.1.100"
+    port: 22
+    user: "admin"
+    identity: "~/.ssh/id_rsa"
+    tags:
+      - "production"
+      - "web"
+  - id: "2"
+    name: "staging-server"
+    host: "192.168.2.50"
+    port: 22
+    user: "deploy"
+    tags:
+      - "staging"

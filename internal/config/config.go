@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/sshm/sshm/internal/models"
 )
@@ -63,6 +66,7 @@ func GetDefaultConfigPath() string {
 }
 
 // LoadConfig loads configuration from the specified path
+// Supports both JSON and YAML formats based on file extension
 // If path is empty, uses default path
 func LoadConfig(path string) (*Config, error) {
 	if path == "" {
@@ -78,26 +82,55 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	// Try JSON first
-	if err := json.Unmarshal(data, &cfg); err == nil {
-		return &cfg, nil
+
+	// Detect format from file extension
+	if isYAML(path) {
+		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse YAML config: %w", err)
+		}
+	} else {
+		// Try JSON first, then fall back to YAML
+		jsonErr := json.Unmarshal(data, &cfg)
+		if jsonErr != nil {
+			// Try YAML as fallback
+			yamlErr := yaml.Unmarshal(data, &cfg)
+			if yamlErr != nil {
+				return nil, fmt.Errorf("failed to parse config (JSON: %v, YAML: %v)", jsonErr, yamlErr)
+			}
+		}
 	}
 
-	// Fallback to YAML (requires gopkg.in/yaml.v3)
-	// For now, return error if JSON fails
-	return nil, fmt.Errorf("failed to parse config: %w", err)
+	return &cfg, nil
+}
+
+// isYAML returns true if the file path has a .yaml or .yml extension
+func isYAML(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".yaml" || ext == ".yml"
 }
 
 // SaveConfig saves configuration to the specified path
+// Supports both JSON and YAML formats based on file extension
 // If path is empty, uses default path
 func SaveConfig(cfg *Config, path string) error {
 	if path == "" {
 		path = GetDefaultConfigPath()
 	}
 
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal config: %w", err)
+	var data []byte
+	var err error
+
+	// Detect format from file extension
+	if isYAML(path) {
+		data, err = yaml.Marshal(cfg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal YAML config: %w", err)
+		}
+	} else {
+		data, err = json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal JSON config: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(path, data, 0600); err != nil {
