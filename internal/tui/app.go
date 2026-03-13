@@ -21,6 +21,7 @@ type App struct {
 	view        string // "list", "add", "edit", "detail", "history", "help"
 	quitting    bool
 	err         error
+	configPath  string
 }
 
 // New creates a new TUI application
@@ -28,12 +29,23 @@ func New(storePath string) (*App, error) {
 	s := store.NewFileStore(storePath)
 	h := store.NewHistoryStore("")
 
+	// Load config to get theme preference
+	cfgPath := config.GetDefaultConfigPath()
+	cfg, err := config.LoadConfig(cfgPath)
+	if err == nil && cfg != nil && cfg.Theme != "" {
+		InitTheme(cfg.Theme)
+	} else {
+		// Default to dark theme
+		InitTheme("dark")
+	}
+
 	return &App{
-		store:    s,
-		history:  h,
-		listView: NewListView(s),
-		helpView: NewHelpView(),
-		view:     "list",
+		store:      s,
+		history:    h,
+		listView:   NewListView(s),
+		helpView:   NewHelpView(),
+		view:       "list",
+		configPath: cfgPath,
 	}, nil
 }
 
@@ -119,6 +131,10 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Show help view
 		m.helpView = NewHelpView()
 		m.view = "help"
+	case "t":
+		// Toggle theme
+		newTheme := ToggleTheme()
+		m.saveThemePreference(newTheme)
 	case "i":
 		// Import from SSH config
 		return m.handleSSHConfigImport()
@@ -309,6 +325,19 @@ func (m *App) renderHistory() string {
 	footer := StatusBar("↑↓ Navigate | r: Refresh | c: Clear | esc: Back")
 
 	return header + "\n\n" + body + "\n\n" + footer
+}
+
+// saveThemePreference saves the theme preference to config file
+func (m *App) saveThemePreference(themeName string) {
+	cfg, err := config.LoadConfig(m.configPath)
+	if err != nil {
+		return // Silently fail - theme will work for this session
+	}
+	if cfg == nil {
+		cfg = &config.Config{}
+	}
+	cfg.Theme = themeName
+	_ = config.SaveConfig(cfg, m.configPath)
 }
 
 // Run starts the TUI application

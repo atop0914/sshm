@@ -439,14 +439,15 @@ func (v *ListView) renderHostRow(h models.Host, width int, selected bool) string
 
 	// Determine status color
 	var statusColor lipgloss.Color
+	onlineColor, offlineColor, unknownColor := GetStatusColors()
 	if h.Online != nil {
 		if *h.Online {
-			statusColor = lipgloss.Color("82") // Green
+			statusColor = onlineColor
 		} else {
-			statusColor = lipgloss.Color("241") // Gray
+			statusColor = offlineColor
 		}
 	} else {
-		statusColor = lipgloss.Color("245") // Light gray for unknown
+		statusColor = unknownColor
 	}
 
 	// Build the row
@@ -467,6 +468,8 @@ func (v *ListView) renderTags(tags []string, availableWidth int) string {
 		return ""
 	}
 
+	tagBg := GetTagBackground()
+
 	var tagViews []string
 	currentWidth := 0
 
@@ -478,7 +481,7 @@ func (v *ListView) renderTags(tags []string, availableWidth int) string {
 
 		tagStyle := lipgloss.NewStyle().
 			Foreground(color).
-			Background(lipgloss.Color("236")).
+			Background(tagBg).
 			Padding(0, 1).
 			Render(tag)
 

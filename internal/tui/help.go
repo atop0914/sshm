@@ -62,6 +62,7 @@ func (v *HelpView) View() string {
 		{"c", "Copy SSH command to clipboard"},
 		{"h", "View connection history (all)"},
 		{"H", "View history for selected host"},
+		{"t", "Toggle light/dark theme"},
 		{"/", "Filter/search hosts"},
 		{"esc", "Clear filter / Go back"},
 		{"q, Ctrl+C", "Quit application"},

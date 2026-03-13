@@ -18,6 +18,7 @@ type Config struct {
 	Hosts    []models.Host      `json:"hosts" yaml:"hosts"`
 	Configs  []models.SSHConfig  `json:"configs" yaml:"configs"`
 	Profiles []models.Profile   `json:"profiles" yaml:"profiles"`
+	Theme    string             `json:"theme" yaml:"theme"`
 }
 
 // GetProfile returns the profile for a host, falling back to default if not found
