@@ -9,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,6 +47,11 @@ func (c *Connector) Connect(host models.Host, profile models.Profile) error {
 		return fmt.Errorf("failed to build client config: %w", err)
 	}
 
+	// Handle ProxyJump connection
+	if host.Proxy != "" {
+		return c.connectViaProxy(host, profile, config)
+	}
+
 	addr := fmt.Sprintf("%s:%d", host.Host, host.Port)
 	client, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
@@ -55,6 +61,67 @@ func (c *Connector) Connect(host models.Host, profile models.Profile) error {
 	c.client = client
 	c.config = config
 	return nil
+}
+
+// connectViaProxy connects to the target host via a jump proxy
+func (c *Connector) connectViaProxy(host models.Host, profile models.Profile, config *ssh.ClientConfig) error {
+	// Parse proxy host (supports user@host:port format)
+	proxyHost, proxyUser, proxyPort, err := parseProxyHost(host.Proxy)
+	if err != nil {
+		return fmt.Errorf("failed to parse proxy host: %w", err)
+	}
+
+	// Connect to proxy first
+	proxyAddr := fmt.Sprintf("%s:%d", proxyHost, proxyPort)
+	proxyConfig := *config
+	proxyConfig.User = proxyUser
+
+	proxyClient, err := ssh.Dial("tcp", proxyAddr, &proxyConfig)
+	if err != nil {
+		return fmt.Errorf("failed to connect to proxy %s: %w", proxyAddr, err)
+	}
+	defer proxyClient.Close()
+
+	// Create a channel to the target host through the proxy
+	targetAddr := fmt.Sprintf("%s:%d", host.Host, host.Port)
+	client, err := proxyClient.Dial("tcp", targetAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to target %s via proxy: %w", targetAddr, err)
+	}
+
+	// Establish the SSH connection through the proxy
+	conn, chans, reqs, err := ssh.NewClientConn(client, targetAddr, config)
+	if err != nil {
+		return fmt.Errorf("failed to establish SSH connection via proxy: %w", err)
+	}
+
+	c.client = ssh.NewClient(conn, chans, reqs)
+	c.config = config
+	return nil
+}
+
+// parseProxyHost parses a proxy host string in format [user@]host[:port]
+func parseProxyHost(proxy string) (host, user string, port int, err error) {
+	port = 22 // default port
+
+	// Extract user if present
+	if idx := strings.Index(proxy, "@"); idx != -1 {
+		user = proxy[:idx]
+		proxy = proxy[idx+1:]
+	}
+
+	// Extract port if present
+	if idx := strings.LastIndex(proxy, ":"); idx != -1 {
+		port, err = strconv.Atoi(proxy[idx+1:])
+		if err != nil {
+			return "", "", 0, fmt.Errorf("invalid port: %w", err)
+		}
+		host = proxy[:idx]
+	} else {
+		host = proxy
+	}
+
+	return host, user, port, nil
 }
 
 // ConnectWithAuth connects using specified auth method
@@ -279,6 +346,11 @@ func LaunchSSH(host models.Host) error {
 		if err == nil {
 			args = append(args, "-i", expandedPath)
 		}
+	}
+	
+	// Add proxy/jump host if specified (ProxyJump)
+	if host.Proxy != "" {
+		args = append(args, "-J", host.Proxy)
 	}
 	
 	// Add user@host

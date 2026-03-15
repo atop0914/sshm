@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-03-15
+
+### Added
+- Full ProxyJump support - Connect to hosts via jump proxies
+- Unit tests for SSH connector, models, and TUI modules
+
+### Fixed
+- ProxyJump connection not working (now properly implements -J flag)
+- GenerateSSHCommand now includes ProxyJump parameter
+- Added proper parseProxyHost function for user@host:port format
+
+### Changed
+- Improved test coverage across all modules
+
 ## [1.1.0] - 2026-03-13
 
 ### Added
