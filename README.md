@@ -62,20 +62,42 @@ Download from the [Releases](https://github.com/atop0914/sshm/releases) page.
 
 ## Keyboard Shortcuts
 
+### List View
 | Key | Action |
 |-----|--------|
 | `↑↓` or `j/k` | Navigate host list |
 | `Enter` | Connect to selected host |
 | `a` | Add new host |
 | `e` | Edit selected host |
+| `x` | Delete selected host (press twice to confirm) |
 | `d` | View host details |
+| `c` | Copy SSH command to clipboard |
 | `h` | View connection history (all) |
 | `H` | View history for selected host |
+| `t` | Toggle light/dark theme |
 | `/` | Filter/search hosts |
 | `i` | Import from SSH config |
 | `?` | Show help |
-| `esc` | Clear filter / Go back |
 | `q` / `Ctrl+C` | Quit application |
+
+### Edit Form
+| Key | Action |
+|-----|--------|
+| `↑↓` or `Tab` | Move between fields |
+| `←` | Open identity file browser / Enter password |
+| `→` | Toggle auth type |
+| `Enter` | Save host |
+| `Esc` | Cancel and go back |
+| `Backspace` / `Delete` / `Ctrl+H` | Delete character |
+| `Ctrl+V` / `Shift+Insert` | Paste text |
+
+### Filter Mode
+| Key | Action |
+|-----|--------|
+| Type | Filter by name/host/user/group/tags |
+| `Backspace` / `Delete` | Delete character from filter |
+| `Enter` | Apply filter |
+| `Esc` | Clear filter |
 
 ## Configuration
 
