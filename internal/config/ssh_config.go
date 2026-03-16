@@ -65,7 +65,8 @@ func (p *SSHConfigParser) ParseConfigString(content string) ([]models.Host, erro
 				}
 			}
 			currentHost = &parsedSSHHost{
-				name: strings.TrimSpace(strings.TrimPrefix(line, "Host ")),
+				name:        strings.TrimSpace(strings.TrimPrefix(line, "Host ")),
+				isImported:  true,
 			}
 			continue
 		}
@@ -119,6 +120,7 @@ type parsedSSHHost struct {
 	proxyJump           string
 	forwardAgent        bool
 	serverAliveInterval int
+	isImported          bool // flag to indicate this was imported
 }
 
 func (h *parsedSSHHost) toModel() models.Host {
@@ -134,6 +136,13 @@ func (h *parsedSSHHost) toModel() models.Host {
 		port = 22
 	}
 
+	// Only set group to "imported" if not already specified via other means
+	// For now, we leave it empty to allow user to set their own group
+	group := ""
+	if h.isImported {
+		group = "imported"
+	}
+
 	return models.Host{
 		ID:        uuid.New().String(),
 		Name:      h.name,
@@ -142,7 +151,8 @@ func (h *parsedSSHHost) toModel() models.Host {
 		User:      h.user,
 		Identity:  h.identityFile,
 		Proxy:     h.proxyJump,
-		Group:     "imported",
+		Group:     group,
+		Tags:      []string{"imported"},
 	}
 }
 

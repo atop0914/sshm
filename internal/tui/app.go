@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/sshm/sshm/internal/clipboard"
 	"github.com/sshm/sshm/internal/config"
 	"github.com/sshm/sshm/internal/store"
@@ -22,6 +23,7 @@ type App struct {
 	quitting    bool
 	err         error
 	configPath  string
+	pendingDelete string // host ID waiting for delete confirmation
 }
 
 // New creates a new TUI application
@@ -69,6 +71,18 @@ func (m *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *App) View() string {
 	if m.err != nil {
 		return ErrorStyle.Render(fmt.Sprintf("Error: %v", m.err))
+	}
+
+	// Show delete confirmation if pending
+	if m.pendingDelete != "" {
+		confirmMsg := fmt.Sprintf("Delete this host? Press 'x' or 'y' to confirm, 'n' or 'esc' to cancel.")
+		confirmDisplay := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("214")). // Orange
+			Bold(true).
+			Render("⚠️ " + confirmMsg)
+		
+		baseView := m.listView.View()
+		return baseView + "\n\n" + StatusBar(confirmDisplay)
 	}
 
 	switch m.view {
@@ -176,10 +190,41 @@ func (m *App) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = fmt.Errorf("failed to copy to clipboard: %w", err)
 			}
 		}
-	case "esc":
-		m.view = "list"
-		m.editView = nil
-		m.historyView = nil
+	case "x":
+		// Delete selected host (with confirmation)
+		selectedHost := m.listView.GetSelectedHost()
+		if selectedHost != nil {
+			if m.pendingDelete == selectedHost.ID {
+				// Second press - confirm delete
+				if err := m.store.DeleteHost(selectedHost.ID); err != nil {
+					m.err = fmt.Errorf("failed to delete host: %w", err)
+				} else {
+					m.listView.Refresh()
+				}
+				m.pendingDelete = ""
+			} else {
+				// First press - ask for confirmation
+				m.pendingDelete = selectedHost.ID
+			}
+		}
+	case "y":
+		// Confirm delete when pending
+		if m.pendingDelete != "" {
+			if err := m.store.DeleteHost(m.pendingDelete); err != nil {
+				m.err = fmt.Errorf("failed to delete host: %w", err)
+			} else {
+				m.listView.Refresh()
+			}
+			m.pendingDelete = ""
+		}
+	case "n", "esc":
+		// Cancel delete confirmation or go back
+		m.pendingDelete = ""
+		if m.view != "list" {
+			m.view = "list"
+			m.editView = nil
+			m.historyView = nil
+		}
 	default:
 		// Handle navigation keys in list view
 		if m.view == "list" {

@@ -175,7 +175,7 @@ func (v *ListView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			v.cursor = 0
 		case "enter":
 			v.filtering = false
-		case "backspace":
+		case "backspace", "delete", "ctrl+h":
 			if len(v.filterText) > 0 {
 				v.filterText = v.filterText[:len(v.filterText)-1]
 				v.updateFiltered()
@@ -505,7 +505,7 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 			Foreground(lipgloss.Color("82")). // Green
 			Render(connectMsg)
 		
-		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
+		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | x: Delete | d: Detail | h: History | i: Import | /: Filter | ?: Help | q: Quit"
 		help := HelpStyle.Width(width).Render(helpText)
 		return help + "\n" + StatusBar(connectingStatus)
 	}
@@ -515,7 +515,7 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 			Foreground(lipgloss.Color("203")). // Red
 			Render("✗ " + v.connectErr)
 		
-		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
+		helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | x: Delete | d: Detail | h: History | i: Import | /: Filter | ?: Help | q: Quit"
 		help := HelpStyle.Width(width).Render(helpText)
 		return help + "\n" + StatusBar(errorStatus)
 	}
@@ -545,7 +545,7 @@ func (v *ListView) renderStatusBar(width int, hosts []models.Host) string {
 
 	status := statusLeft + statusRight
 
-	helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | d: Detail | h: History | i: Import | ?: Help | q: Quit"
+	helpText := "↑↓ Navigate | Enter: Connect | a: Add | e: Edit | x: Delete | d: Detail | h: History | i: Import | /: Filter | ?: Help | q: Quit"
 	
 	help := HelpStyle.Width(width).Render(helpText)
 

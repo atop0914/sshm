@@ -55,6 +55,18 @@ func (s *FileStore) load() error {
 		return fmt.Errorf("failed to read store: %w", err)
 	}
 
+	// Try to parse as new Config format first (object with hosts array)
+	var cfg models.Config
+	if err := json.Unmarshal(data, &cfg); err == nil && len(cfg.Hosts) > 0 {
+		// New format - Config with hosts
+		s.hosts = make(map[string]models.Host)
+		for _, host := range cfg.Hosts {
+			s.hosts[host.ID] = host
+		}
+		return nil
+	}
+
+	// Try legacy array format
 	var hosts []models.Host
 	if err := json.Unmarshal(data, &hosts); err != nil {
 		return fmt.Errorf("failed to parse store data: %w", err)

@@ -87,12 +87,20 @@ func LoadConfig(path string) (*Config, error) {
 	// Detect format from file extension
 	if isYAML(path) {
 		if err := yaml.Unmarshal(data, &cfg); err != nil {
+			// Try legacy array format
+			if legacyCfg := tryParseLegacyYAML(data); legacyCfg != nil {
+				return legacyCfg, nil
+			}
 			return nil, fmt.Errorf("failed to parse YAML config: %w", err)
 		}
 	} else {
-		// Try JSON first, then fall back to YAML
+		// Try JSON first
 		jsonErr := json.Unmarshal(data, &cfg)
 		if jsonErr != nil {
+			// Try legacy array format
+			if legacyCfg := tryParseLegacyJSON(data); legacyCfg != nil {
+				return legacyCfg, nil
+			}
 			// Try YAML as fallback
 			yamlErr := yaml.Unmarshal(data, &cfg)
 			if yamlErr != nil {
@@ -102,6 +110,24 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+// tryParseLegacyJSON tries to parse a legacy JSON array format
+func tryParseLegacyJSON(data []byte) *Config {
+	var hosts []models.Host
+	if err := json.Unmarshal(data, &hosts); err == nil && len(hosts) > 0 {
+		return &Config{Hosts: hosts}
+	}
+	return nil
+}
+
+// tryParseLegacyYAML tries to parse a legacy YAML array format
+func tryParseLegacyYAML(data []byte) *Config {
+	var hosts []models.Host
+	if err := yaml.Unmarshal(data, &hosts); err == nil && len(hosts) > 0 {
+		return &Config{Hosts: hosts}
+	}
+	return nil
 }
 
 // isYAML returns true if the file path has a .yaml or .yml extension

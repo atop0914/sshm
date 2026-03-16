@@ -175,7 +175,7 @@ func NewAddView(s *store.FileStore) *EditView {
 		host:          &models.Host{},
 		mode:          "add",
 		field:         fieldName,
-		values:        make(map[string]string),
+		values:        map[string]string{fieldPort: "22"},
 		errors:        make(map[string]string),
 		saved:         false,
 		existingGroups: groups,
@@ -291,7 +291,7 @@ func joinTags(tags []string) string {
 
 // Init initializes the edit view
 func (v *EditView) Init() tea.Cmd {
-	return nil
+	return tea.EnableBracketedPaste
 }
 
 // Update handles messages
@@ -314,6 +314,26 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Handle password entry mode
 	if v.enterPassword {
 		return v.handlePasswordKey(msg)
+	}
+	
+	// When in editable field, prioritize text input over navigation
+	isEditableField := v.field != fieldAuthType && v.field != fieldPassword
+	
+	// Handle text input first (including j, k, h, l for editable fields)
+	if isEditableField {
+		text := msg.String()
+		// Check for bracketed paste
+		if len(text) > 6 && strings.HasPrefix(text, "\x1b[200~") && strings.HasSuffix(text, "\x1b[201~") {
+			pasted := text[6 : len(text)-6]
+			v.values[v.field] += pasted
+			v.validate()
+			return v, nil
+		}
+		// Regular single character input
+		if len(text) == 1 {
+			v.handleInput(text)
+			return v, nil
+		}
 	}
 	
 	switch msg.String() {
@@ -352,11 +372,11 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return v, v.save()
 	case "tab":
 		v.nextField()
-	case "b": // backspace
+	case "backspace", "b", "delete", "ctrl+h": // Support backspace, b, delete, and ctrl+h
 		if len(v.values[v.field]) > 0 {
 			v.values[v.field] = v.values[v.field][:len(v.values[v.field])-1]
 		}
-		v.validate()
+		// Don't validate on each keystroke - validate only on save
 	case "esc":
 		if v.showBrowser {
 			v.showBrowser = false
@@ -366,8 +386,16 @@ func (v *EditView) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	default:
 		// Handle input for current field
-		if len(msg.String()) == 1 {
-			v.handleInput(msg.String())
+		// Check for bracketed paste (starts with \x1b[200~ and ends with \x1b[201~)
+		text := msg.String()
+		if len(text) > 6 && strings.HasPrefix(text, "\x1b[200~") && strings.HasSuffix(text, "\x1b[201~") {
+			// Extract pasted content
+			pasted := text[6 : len(text)-6]
+			// Don't allow paste in auth type or password fields
+			if v.field != fieldAuthType && v.field != fieldPassword {
+				v.values[v.field] += pasted
+				v.validate()
+			}
 		}
 	}
 	return v, nil
@@ -455,11 +483,11 @@ func (v *EditView) nextField() {
 }
 
 func (v *EditView) handleInput(key string) {
-	if v.field == fieldPort || v.field == fieldAuthType {
-		return // Don't allow typing in these fields directly
+	if v.field == fieldAuthType || v.field == fieldPassword {
+		return // Don't allow typing in these fields directly (use arrow keys or special entry)
 	}
 	v.values[v.field] += key
-	v.validate()
+	// Don't validate on each keystroke - validate only on save
 }
 
 func (v *EditView) validate() {
@@ -600,7 +628,7 @@ func (v *EditView) View() string {
 	body := lipgloss.JoinVertical(lipgloss.Left, fields...)
 	form := BorderStyle.Width(60).Render(body)
 
-	help := HelpStyle.Render("↑↓ move | type to edit | ← select key file/password | enter: save | esc: cancel")
+	help := HelpStyle.Render("↑↓ move | type to edit | backspace/delete/b/ctrl+h: delete | ← select key file/password | enter: save | esc: cancel")
 
 	return header + "\n\n" + form + "\n\n" + help
 }
