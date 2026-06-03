@@ -196,6 +196,7 @@ sshm/
 ```bash
 # Build for current platform
 go build -o sshm ./cmd
+[![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?logo=go)](https://go.dev/)
 
 # Build for Linux (amd64)
 GOOS=linux GOARCH=amd64 go build -o sshm-linux-amd64 ./cmd
